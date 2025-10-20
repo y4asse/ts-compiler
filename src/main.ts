@@ -7,6 +7,8 @@ type Token = {
   next: Token | null;
 };
 
+let token: Token | null = null;
+
 const newToken = (
   kind: TokenKind,
   cur: Token,
@@ -42,6 +44,12 @@ const tokenize = (text: string) => {
 
   let i = 0;
   while (i !== text.length) {
+    // 空白をスキップ
+    if (text[i] === " ") {
+      i++;
+      continue;
+    }
+
     if (text[i] === "+" || text[i] === "-") {
       cur = newToken("RESERVED", cur, text[i++]);
       continue;
@@ -65,6 +73,37 @@ const tokenize = (text: string) => {
   return head.next;
 };
 
+const expectNumber = () => {
+  if (token === null) {
+    return error("トークンがありません");
+  }
+  if (token.kind !== "NUM") {
+    return error("数ではありません");
+  }
+  const val = token.val;
+  token = token.next;
+  return val;
+};
+
+const atEOF = () => {
+  return token?.kind === "EOF";
+};
+
+const consume = (op: string) => {
+  if (token?.kind !== "RESERVED" || token.str !== op) {
+    return false;
+  }
+  token = token.next;
+  return true;
+};
+
+const expect = (op: string) => {
+  if (token?.kind !== "RESERVED" || token.str !== op) {
+    return false;
+  }
+  token = token.next;
+};
+
 const main = async () => {
   let program: string = "";
   program = ".intel_syntax noprefix\n";
@@ -75,8 +114,21 @@ const main = async () => {
   const text = await Deno.readTextFile("program");
 
   // トークナイズする
-  const token = tokenize(text);
-  console.dir(token, { depth: null });
+  token = tokenize(text);
+
+  program += `  mov rax, ${expectNumber()}\n`;
+
+  while (!atEOF()) {
+    if (consume("+")) {
+      program += `  add rax, ${expectNumber()}\n`;
+      continue;
+    }
+
+    expect("-");
+    program += `  sub rax, ${expectNumber()}\n`;
+  }
+
+  program += "  ret\n";
 
   await Deno.writeTextFile("./dist/out.s", program);
 };
