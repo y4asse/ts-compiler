@@ -8,6 +8,7 @@ type Token = {
 };
 
 let token: Token | null = null;
+let userInput: string = "";
 
 const newToken = (
   kind: TokenKind,
@@ -65,7 +66,7 @@ const tokenize = (text: string) => {
       cur.val = parseInt(numStr);
       continue;
     }
-    error("トークナイズできません");
+    errorAt(i, "トークナイズできません");
   }
 
   newToken("EOF", cur, "");
@@ -104,6 +105,12 @@ const expect = (op: string) => {
   token = token.next;
 };
 
+const errorAt = (pos: number, message: string) => {
+  console.error(userInput);
+  console.error(" ".repeat(pos) + "^ " + message);
+  Deno.exit(1);
+};
+
 const main = async () => {
   let program: string = "";
   program = ".intel_syntax noprefix\n";
@@ -111,10 +118,10 @@ const main = async () => {
   program += "\n";
   program += "main:\n";
 
-  const text = await Deno.readTextFile("program");
+  userInput = await Deno.readTextFile("program");
 
   // トークナイズする
-  token = tokenize(text);
+  token = tokenize(userInput);
 
   program += `  mov rax, ${expectNumber()}\n`;
 
