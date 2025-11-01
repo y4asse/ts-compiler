@@ -1,28 +1,59 @@
-type TokenKind = "RESERVED" | "NUM" | "EOF";
+type TokenKindReserved = "RESERVED";
+type TokenKindNum = "NUM";
+type TokenKindEOF = "EOF";
+type TokenKindHead = "HEAD";
 
-type Token = {
-  kind: TokenKind;
+type TokenReserved = {
+  kind: TokenKindReserved;
   str: string;
+  next: Token | null;
+};
+
+type TokenNum = {
+  kind: TokenKindNum;
   val: number;
   next: Token | null;
 };
+
+type TokenEOF = {
+  kind: TokenKindEOF;
+};
+
+type TokenHead = {
+  kind: TokenKindHead;
+  next: null;
+};
+
+type Token = TokenReserved | TokenNum | TokenEOF | TokenHead;
 
 let token: Token | null = null;
 let userInput: string = "";
 
 const newToken = (
-  kind: TokenKind,
   cur: Token,
-  str: string,
+  newToken: Token,
 ): Token => {
-  const token: Token = {
-    kind,
+  if (cur.kind === "EOF") {
+    return newToken;
+  }
+  cur.next = newToken;
+  return newToken;
+};
+
+const newTokenReserved = (str: string): Token => {
+  return {
+    kind: "RESERVED",
     str,
-    val: 0,
     next: null,
   };
-  cur.next = token;
-  return token;
+};
+
+const newTokenNum = (val: number): Token => {
+  return {
+    kind: "NUM",
+    val,
+    next: null,
+  };
 };
 
 const isDigit = (char: string): boolean => {
@@ -36,9 +67,7 @@ const error = (text: string) => {
 
 const tokenize = (text: string) => {
   const head: Token = {
-    kind: "EOF",
-    str: "",
-    val: 0,
+    kind: "HEAD",
     next: null,
   };
   let cur: Token = head;
@@ -52,24 +81,24 @@ const tokenize = (text: string) => {
     }
 
     if (text[i] === "+" || text[i] === "-") {
-      cur = newToken("RESERVED", cur, text[i++]);
+      cur = newToken(cur, newTokenReserved(text[i++]));
       continue;
     }
 
     if (isDigit(text[i])) {
-      cur = newToken("NUM", cur, text[i]);
       const start = i;
       while (isDigit(text[i])) {
         i++;
       }
       const numStr = text.slice(start, i);
-      cur.val = parseInt(numStr);
+      const num = parseInt(numStr);
+      cur = newToken(cur, newTokenNum(num));
       continue;
     }
     errorAt(i, "トークナイズできません");
   }
 
-  newToken("EOF", cur, "");
+  newToken(cur, { kind: "EOF" });
 
   return head.next;
 };
