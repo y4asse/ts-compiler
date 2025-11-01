@@ -213,8 +213,40 @@ const primary = (): Node => {
   return newNodeNum(expectNumber());
 };
 
+let program: string = "";
+
+const gen = (node: Node) => {
+  if (node.kind === "ND_NUM") {
+    program += `  push ${node.val}\n`;
+    return;
+  }
+
+  gen(node.lhs);
+  gen(node.rhs);
+
+  program += "  pop rdi\n"; // 右のNodeの計算結果が入る
+  program += "  pop rax\n"; // 左のNodeの計算結果が入る
+
+  switch (node.kind) {
+    case "ND_ADD":
+      program += "  add rax, rdi\n";
+      break;
+    case "ND_SUB":
+      program += "  sub rax, rdi\n";
+      break;
+    case "ND_MUL":
+      program += "  imul rax, rdi\n";
+      break;
+    case "ND_DIV":
+      program += "  cqo\n"; // RAXに入っている64ビットの値を128ビットに伸ばしてRDXとRAXにセットする
+      program += "  idiv rdi\n";
+      break;
+  }
+
+  program += "  push rax\n";
+};
+
 const main = async () => {
-  let program: string = "";
   program = ".intel_syntax noprefix\n";
   program += ".globl main\n";
   program += "\n";
@@ -226,19 +258,10 @@ const main = async () => {
   token = tokenize(userInput);
 
   const node = expr();
-  console.log(node);
 
-  // program += `  mov rax, ${expectNumber()}\n`;
-  // while (!atEOF()) {
-  //   if (consume("+")) {
-  //     program += `  add rax, ${expectNumber()}\n`;
-  //     continue;
-  //   }
+  gen(node);
 
-  //   expect("-");
-  //   program += `  sub rax, ${expectNumber()}\n`;
-  // }
-
+  program += "  pop rax\n";
   program += "  ret\n";
 
   await Deno.writeTextFile("./dist/out.s", program);
