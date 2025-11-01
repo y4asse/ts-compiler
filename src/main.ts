@@ -80,7 +80,7 @@ const tokenize = (text: string) => {
       continue;
     }
 
-    if (text[i] === "+" || text[i] === "-") {
+    if (["+", "-", "*", "/", "(", ")"].includes(text[i])) {
       cur = newToken(cur, newTokenReserved(text[i++]));
       continue;
     }
@@ -140,6 +140,79 @@ const errorAt = (pos: number, message: string) => {
   Deno.exit(1);
 };
 
+// 抽象構文木を生成する
+type ND_ADD = "ND_ADD";
+type ND_SUB = "ND_SUB";
+type ND_MUL = "ND_MUL";
+type ND_DIV = "ND_DIV";
+type ND_NUM = "ND_NUM";
+
+type Node = {
+  kind: ND_ADD | ND_SUB | ND_MUL | ND_DIV;
+  lhs: Node;
+  rhs: Node;
+} | {
+  kind: ND_NUM;
+  val: number;
+};
+
+const newNode = (
+  kind: ND_ADD | ND_SUB | ND_MUL | ND_DIV,
+  lhs: Node,
+  rhs: Node,
+): Node => {
+  return {
+    kind,
+    lhs,
+    rhs,
+  };
+};
+
+const newNodeNum = (val: number): Node => {
+  return {
+    kind: "ND_NUM",
+    val,
+  };
+};
+
+const expr = (): Node => {
+  let node = mul();
+
+  while (true) {
+    if (consume("+")) {
+      node = newNode("ND_ADD", node, mul());
+    } else if (consume("-")) {
+      node = newNode("ND_SUB", node, mul());
+    } else {
+      return node;
+    }
+  }
+};
+
+const mul = (): Node => {
+  let node = primary();
+
+  while (true) {
+    if (consume("*")) {
+      node = newNode("ND_MUL", node, primary());
+    } else if (consume("/")) {
+      node = newNode("ND_DIV", node, primary());
+    } else {
+      return node;
+    }
+  }
+};
+
+const primary = (): Node => {
+  if (consume("(")) {
+    const node = expr();
+    expect(")");
+    return node;
+  }
+
+  return newNodeNum(expectNumber());
+};
+
 const main = async () => {
   let program: string = "";
   program = ".intel_syntax noprefix\n";
@@ -152,17 +225,19 @@ const main = async () => {
   // トークナイズする
   token = tokenize(userInput);
 
-  program += `  mov rax, ${expectNumber()}\n`;
+  const node = expr();
+  console.log(node);
 
-  while (!atEOF()) {
-    if (consume("+")) {
-      program += `  add rax, ${expectNumber()}\n`;
-      continue;
-    }
+  // program += `  mov rax, ${expectNumber()}\n`;
+  // while (!atEOF()) {
+  //   if (consume("+")) {
+  //     program += `  add rax, ${expectNumber()}\n`;
+  //     continue;
+  //   }
 
-    expect("-");
-    program += `  sub rax, ${expectNumber()}\n`;
-  }
+  //   expect("-");
+  //   program += `  sub rax, ${expectNumber()}\n`;
+  // }
 
   program += "  ret\n";
 
