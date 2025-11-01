@@ -190,17 +190,29 @@ const expr = (): Node => {
 };
 
 const mul = (): Node => {
-  let node = primary();
+  let node = unary();
 
   while (true) {
     if (consume("*")) {
-      node = newNode("ND_MUL", node, primary());
+      node = newNode("ND_MUL", node, unary());
     } else if (consume("/")) {
-      node = newNode("ND_DIV", node, primary());
+      node = newNode("ND_DIV", node, unary());
     } else {
       return node;
     }
   }
+};
+
+const unary = (): Node => {
+  if (consume("+")) {
+    return primary();
+  }
+
+  if (consume("-")) {
+    return newNode("ND_SUB", newNodeNum(0), primary());
+  }
+
+  return primary();
 };
 
 const primary = (): Node => {
