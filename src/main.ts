@@ -115,10 +115,6 @@ const expectNumber = () => {
   return val;
 };
 
-const atEOF = () => {
-  return token?.kind === "EOF";
-};
-
 const consume = (op: string) => {
   if (token?.kind !== "RESERVED" || token.str !== op) {
     return false;
