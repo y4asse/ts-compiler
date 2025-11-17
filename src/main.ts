@@ -1,3 +1,5 @@
+import { findLvar, Lvar } from "./lvar.ts";
+
 type TokenKindReserved = "RESERVED";
 type TokenKindNum = "NUM";
 type TokenKindIdent = "IDENT";
@@ -34,9 +36,11 @@ type TokenHead = {
 };
 
 type Token = TokenReserved | TokenNum | TokenIdent | TokenEOF | TokenHead;
+export type { TokenIdent };
 
 let token: Token | null = null;
 let userInput: string = "";
+let locals: Lvar | null = null;
 
 const newToken = (
   cur: Token,
@@ -77,6 +81,16 @@ const newTokenIdent = (str: string, len: number): Token => {
 
 const isDigit = (char: string): boolean => {
   return /\d/.test(char);
+};
+
+const isAlnum = (char: string): boolean => {
+  return ("a".charCodeAt(0) <= char.charCodeAt(0) &&
+    char.charCodeAt(0) <= "z".charCodeAt(0)) ||
+    ("A".charCodeAt(0) <= char.charCodeAt(0) &&
+      char.charCodeAt(0) <= "Z".charCodeAt(0)) ||
+    ("0".charCodeAt(0) <= char.charCodeAt(0) &&
+      char.charCodeAt(0) <= "9".charCodeAt(0)) ||
+    (char === "_");
 };
 
 const error = (text: string) => {
@@ -135,8 +149,13 @@ const tokenize = (text: string) => {
       continue;
     }
 
-    if ("a" <= text[i] && text[i] <= "z") {
-      cur = newToken(cur, newTokenIdent(text[i++], 1)); // 一旦1文字
+    if (isAlnum(text[i])) {
+      const start = i;
+      while (isAlnum(text[i])) {
+        i++;
+      }
+      const str = text.slice(start, i);
+      cur = newToken(cur, newTokenIdent(str, str.length)); // 一旦1文字
       continue;
     }
 
@@ -370,8 +389,19 @@ const unary = (): Node => {
 const primary = (): Node => {
   const identToken = consumeIdent();
   if (identToken) {
-    const offset = (identToken.str.charCodeAt(0) - "a".charCodeAt(0) + 1) * 8;
-    return newNodeLvar(offset);
+    const lvar = findLvar(locals, identToken);
+    if (lvar) {
+      return newNodeLvar(lvar.offset);
+    } else {
+      const newLvar: Lvar = {
+        next: locals,
+        name: identToken.str,
+        len: identToken.len,
+        offset: locals ? locals.offset + 8 : 8,
+      };
+      locals = newLvar;
+      return newNodeLvar(newLvar.offset);
+    }
   }
 
   if (consume("(")) {
