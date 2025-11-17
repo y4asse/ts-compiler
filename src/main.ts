@@ -7,6 +7,7 @@ type TokenReserved = {
   kind: TokenKindReserved;
   str: string;
   next: Token | null;
+  len: number;
 };
 
 type TokenNum = {
@@ -40,11 +41,12 @@ const newToken = (
   return newToken;
 };
 
-const newTokenReserved = (str: string): Token => {
+const newTokenReserved = (str: string, len: number): Token => {
   return {
     kind: "RESERVED",
     str,
     next: null,
+    len,
   };
 };
 
@@ -65,6 +67,9 @@ const error = (text: string) => {
   Deno.exit(1);
 };
 
+const multiLetterPunctuator = ["==", "!=", "<=", ">="];
+const singleLetterPunctuator = ["+", "-", "*", "/", "(", ")", "<", ">"];
+
 const tokenize = (text: string) => {
   const head: Token = {
     kind: "HEAD",
@@ -80,8 +85,14 @@ const tokenize = (text: string) => {
       continue;
     }
 
-    if (["+", "-", "*", "/", "(", ")"].includes(text[i])) {
-      cur = newToken(cur, newTokenReserved(text[i++]));
+    if (multiLetterPunctuator.find((v) => text.startsWith(v, i))) {
+      cur = newToken(cur, newTokenReserved(text.substring(i, i + 2), 2));
+      i += 2;
+      continue;
+    }
+
+    if (singleLetterPunctuator.includes(text[i])) {
+      cur = newToken(cur, newTokenReserved(text[i++], 1));
       continue;
     }
 
@@ -142,9 +153,13 @@ type ND_SUB = "ND_SUB";
 type ND_MUL = "ND_MUL";
 type ND_DIV = "ND_DIV";
 type ND_NUM = "ND_NUM";
+type ND_EQ = "ND_EQ";
+type ND_NE = "ND_NE";
+type ND_LE = "ND_LE";
+type ND_LT = "ND_LT";
 
 type Node = {
-  kind: ND_ADD | ND_SUB | ND_MUL | ND_DIV;
+  kind: ND_ADD | ND_SUB | ND_MUL | ND_DIV | ND_EQ | ND_NE | ND_LE | ND_LT;
   lhs: Node;
   rhs: Node;
 } | {
@@ -153,7 +168,7 @@ type Node = {
 };
 
 const newNode = (
-  kind: ND_ADD | ND_SUB | ND_MUL | ND_DIV,
+  kind: ND_ADD | ND_SUB | ND_MUL | ND_DIV | ND_EQ | ND_NE | ND_LE | ND_LT,
   lhs: Node,
   rhs: Node,
 ): Node => {
@@ -172,6 +187,45 @@ const newNodeNum = (val: number): Node => {
 };
 
 const expr = (): Node => {
+  return equality();
+};
+
+// equality = relational ("==" relational | "!=" relational)*
+const equality = (): Node => {
+  let node = relational();
+
+  while (true) {
+    if (consume("==")) {
+      node = newNode("ND_EQ", node, relational());
+    } else if (consume("!=")) {
+      node = newNode("ND_NE", node, relational());
+    } else {
+      return node;
+    }
+  }
+};
+
+// relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+const relational = (): Node => {
+  let node = add();
+
+  while (true) {
+    if (consume("<")) {
+      node = newNode("ND_LT", node, relational());
+    } else if (consume(">")) {
+      node = newNode("ND_LT", relational(), node);
+    } else if (consume("<=")) {
+      node = newNode("ND_LE", node, relational());
+    } else if (consume(">=")) {
+      node = newNode("ND_LE", relational(), node);
+    } else {
+      return node;
+    }
+  }
+};
+
+// add = mul ("+" mul | "-" mul)*
+const add = (): Node => {
   let node = mul();
 
   while (true) {
@@ -248,6 +302,26 @@ const gen = (node: Node) => {
     case "ND_DIV":
       program += "  cqo\n"; // RAXに入っている64ビットの値を128ビットに伸ばしてRDXとRAXにセットする
       program += "  idiv rdi\n";
+      break;
+    case "ND_EQ":
+      program += "  cmp rax, rdi\n";
+      program += "  sete al\n";
+      program += "  movzb rax, al\n";
+      break;
+    case "ND_NE":
+      program += "  cmp rax, rdi\n";
+      program += "  setne al\n";
+      program += "  movzb rax, al\n";
+      break;
+    case "ND_LT":
+      program += "  cmp rax, rdi\n";
+      program += "  setl al\n";
+      program += "  movzb rax, al\n";
+      break;
+    case "ND_LE":
+      program += "  cmp rax, rdi\n";
+      program += "  setle al\n";
+      program += "  movzb rax, al\n";
       break;
   }
 
