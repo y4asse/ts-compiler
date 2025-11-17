@@ -1,5 +1,6 @@
 type TokenKindReserved = "RESERVED";
 type TokenKindNum = "NUM";
+type TokenKindIdent = "IDENT";
 type TokenKindEOF = "EOF";
 type TokenKindHead = "HEAD";
 
@@ -16,6 +17,13 @@ type TokenNum = {
   next: Token | null;
 };
 
+type TokenIdent = {
+  kind: TokenKindIdent;
+  str: string;
+  next: Token | null;
+  len: number;
+};
+
 type TokenEOF = {
   kind: TokenKindEOF;
 };
@@ -25,7 +33,7 @@ type TokenHead = {
   next: null;
 };
 
-type Token = TokenReserved | TokenNum | TokenEOF | TokenHead;
+type Token = TokenReserved | TokenNum | TokenIdent | TokenEOF | TokenHead;
 
 let token: Token | null = null;
 let userInput: string = "";
@@ -58,6 +66,15 @@ const newTokenNum = (val: number): Token => {
   };
 };
 
+const newTokenIdent = (str: string, len: number): Token => {
+  return {
+    kind: "IDENT",
+    str,
+    next: null,
+    len,
+  };
+};
+
 const isDigit = (char: string): boolean => {
   return /\d/.test(char);
 };
@@ -68,7 +85,18 @@ const error = (text: string) => {
 };
 
 const multiLetterPunctuator = ["==", "!=", "<=", ">="];
-const singleLetterPunctuator = ["+", "-", "*", "/", "(", ")", "<", ">"];
+const singleLetterPunctuator = [
+  "+",
+  "-",
+  "*",
+  "/",
+  "(",
+  ")",
+  "<",
+  ">",
+  "=",
+  ";",
+];
 
 const tokenize = (text: string) => {
   const head: Token = {
@@ -106,6 +134,12 @@ const tokenize = (text: string) => {
       cur = newToken(cur, newTokenNum(num));
       continue;
     }
+
+    if ("a" <= text[i] && text[i] <= "z") {
+      cur = newToken(cur, newTokenIdent(text[i++], 1)); // 一旦1文字
+      continue;
+    }
+
     errorAt(i, "トークナイズできません");
   }
 
@@ -126,12 +160,27 @@ const expectNumber = () => {
   return val;
 };
 
+const atEOF = () => {
+  return token?.kind === "EOF";
+};
+
 const consume = (op: string) => {
   if (token?.kind !== "RESERVED" || token.str !== op) {
     return false;
   }
   token = token.next;
   return true;
+};
+
+const consumeIdent = (): TokenIdent | null => {
+  if (token?.kind !== "IDENT") {
+    return null;
+  }
+
+  // 今見てるIdentトークンを返しつつトークンを1つ進める
+  const tokenIdent = token;
+  token = token.next;
+  return tokenIdent;
 };
 
 const expect = (op: string) => {
@@ -157,18 +206,41 @@ type ND_EQ = "ND_EQ";
 type ND_NE = "ND_NE";
 type ND_LE = "ND_LE";
 type ND_LT = "ND_LT";
+type ND_ASSIGN = "ND_ASSIGN";
+type ND_LVAR = "ND_LVAR";
 
 type Node = {
-  kind: ND_ADD | ND_SUB | ND_MUL | ND_DIV | ND_EQ | ND_NE | ND_LE | ND_LT;
+  kind:
+    | ND_ADD
+    | ND_SUB
+    | ND_MUL
+    | ND_DIV
+    | ND_EQ
+    | ND_NE
+    | ND_LE
+    | ND_LT
+    | ND_ASSIGN;
   lhs: Node;
   rhs: Node;
 } | {
   kind: ND_NUM;
   val: number;
+} | {
+  kind: ND_LVAR;
+  offset: number;
 };
 
 const newNode = (
-  kind: ND_ADD | ND_SUB | ND_MUL | ND_DIV | ND_EQ | ND_NE | ND_LE | ND_LT,
+  kind:
+    | ND_ADD
+    | ND_SUB
+    | ND_MUL
+    | ND_DIV
+    | ND_EQ
+    | ND_NE
+    | ND_LE
+    | ND_LT
+    | ND_ASSIGN,
   lhs: Node,
   rhs: Node,
 ): Node => {
@@ -179,6 +251,13 @@ const newNode = (
   };
 };
 
+const newNodeLvar = (offset: number): Node => {
+  return {
+    kind: "ND_LVAR",
+    offset,
+  };
+};
+
 const newNodeNum = (val: number): Node => {
   return {
     kind: "ND_NUM",
@@ -186,8 +265,31 @@ const newNodeNum = (val: number): Node => {
   };
 };
 
+const code: (Node | null)[] = [];
+const programCode = () => {
+  let i = 0;
+  while (!atEOF()) {
+    code[i++] = stmt();
+  }
+  code[i] = null;
+};
+
+const stmt = (): Node => {
+  const node = expr();
+  expect(";");
+  return node;
+};
+
 const expr = (): Node => {
-  return equality();
+  return assign();
+};
+
+const assign = (): Node => {
+  let node = equality();
+  if (consume("=")) {
+    node = newNode("ND_ASSIGN", node, assign());
+  }
+  return node;
 };
 
 // equality = relational ("==" relational | "!=" relational)*
@@ -266,6 +368,12 @@ const unary = (): Node => {
 };
 
 const primary = (): Node => {
+  const identToken = consumeIdent();
+  if (identToken) {
+    const offset = (identToken.str.charCodeAt(0) - "a".charCodeAt(0) + 1) * 8;
+    return newNodeLvar(offset);
+  }
+
   if (consume("(")) {
     const node = expr();
     expect(")");
@@ -277,10 +385,38 @@ const primary = (): Node => {
 
 let program: string = "";
 
-const gen = (node: Node) => {
-  if (node.kind === "ND_NUM") {
-    program += `  push ${node.val}\n`;
+const genLval = (node: Node) => {
+  if (node.kind === "ND_LVAR") {
+    program += "  mov rax, rbp\n";
+    program += `  sub rax, ${node.offset}\n`;
+    program += "  push rax\n";
     return;
+  }
+  error("代入の左辺値が変数ではありません");
+};
+
+const gen = (node: Node) => {
+  switch (node.kind) {
+    case "ND_NUM": {
+      program += `  push ${node.val}\n`;
+      return;
+    }
+    case "ND_LVAR": {
+      genLval(node);
+      program += `  pop rax\n`;
+      program += `  mov rax, [rax]\n`;
+      program += `  push rax\n`;
+      return;
+    }
+    case "ND_ASSIGN": {
+      genLval(node.lhs);
+      gen(node.rhs);
+      program += `  pop rdi\n`;
+      program += `  pop rax\n`;
+      program += `  mov [rax], rdi\n`;
+      program += `  push rdi\n`;
+      return;
+    }
   }
 
   gen(node.lhs);
@@ -339,11 +475,21 @@ const main = async () => {
   // トークナイズする
   token = tokenize(userInput);
 
-  const node = expr();
+  // codeにNodeの配列が入る
+  programCode();
 
-  gen(node);
+  for (let i = 0; code[i]; i++) {
+    const node = code[i];
+    if (!node) {
+      break;
+    }
 
-  program += "  pop rax\n";
+    gen(node);
+
+    program += "  pop rax\n";
+  }
+
+  // TODOエピローグ
   program += "  ret\n";
 
   await Deno.writeTextFile("./dist/out.s", program);
