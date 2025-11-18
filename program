@@ -1,1 +1,1 @@
-test = 8 + 4; sample = test + 3; sample = sample + 1;
+test = 8 + 4; sample = test + 3; sample = sample + 1; return sample; 100;

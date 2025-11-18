@@ -3,6 +3,7 @@ import { findLvar, Lvar } from "./lvar.ts";
 type TokenKindReserved = "RESERVED";
 type TokenKindNum = "NUM";
 type TokenKindIdent = "IDENT";
+type TokenKindReturn = "RETURN";
 type TokenKindEOF = "EOF";
 type TokenKindHead = "HEAD";
 
@@ -26,6 +27,12 @@ type TokenIdent = {
   len: number;
 };
 
+type TokenReturn = {
+  kind: TokenKindReturn;
+  str: "return";
+  next: Token | null;
+};
+
 type TokenEOF = {
   kind: TokenKindEOF;
 };
@@ -35,7 +42,13 @@ type TokenHead = {
   next: null;
 };
 
-type Token = TokenReserved | TokenNum | TokenIdent | TokenEOF | TokenHead;
+type Token =
+  | TokenReserved
+  | TokenNum
+  | TokenIdent
+  | TokenEOF
+  | TokenHead
+  | TokenReturn;
 export type { TokenIdent };
 
 let token: Token | null = null;
@@ -76,6 +89,14 @@ const newTokenIdent = (str: string, len: number): Token => {
     str,
     next: null,
     len,
+  };
+};
+
+const newTokenReturn = (): Token => {
+  return {
+    kind: "RETURN",
+    str: "return",
+    next: null,
   };
 };
 
@@ -124,6 +145,12 @@ const tokenize = (text: string) => {
     // 空白をスキップ
     if (text[i] === " ") {
       i++;
+      continue;
+    }
+
+    if (text.startsWith("return", i) && !isAlnum(text[i + 6])) {
+      cur = newToken(cur, newTokenReturn());
+      i += 6;
       continue;
     }
 
@@ -184,9 +211,14 @@ const atEOF = () => {
 };
 
 const consume = (op: string) => {
-  if (token?.kind !== "RESERVED" || token.str !== op) {
+  if ((token?.kind !== "RESERVED") && (token?.kind !== "RETURN")) {
     return false;
   }
+
+  if (token.str !== op) {
+    return false;
+  }
+
   token = token.next;
   return true;
 };
@@ -227,6 +259,7 @@ type ND_LE = "ND_LE";
 type ND_LT = "ND_LT";
 type ND_ASSIGN = "ND_ASSIGN";
 type ND_LVAR = "ND_LVAR";
+type ND_RETURN = "ND_RETURN";
 
 type Node = {
   kind:
@@ -247,6 +280,9 @@ type Node = {
 } | {
   kind: ND_LVAR;
   offset: number;
+} | {
+  kind: ND_RETURN;
+  lhs: Node;
 };
 
 const newNode = (
@@ -284,6 +320,13 @@ const newNodeNum = (val: number): Node => {
   };
 };
 
+const newNodeReturn = (lhs: Node): Node => {
+  return {
+    kind: "ND_RETURN",
+    lhs,
+  };
+};
+
 const code: (Node | null)[] = [];
 const programCode = () => {
   let i = 0;
@@ -294,8 +337,10 @@ const programCode = () => {
 };
 
 const stmt = (): Node => {
-  const node = expr();
+  const node = consume("return") ? newNodeReturn(expr()) : expr();
+
   expect(";");
+
   return node;
 };
 
@@ -445,6 +490,12 @@ const gen = (node: Node) => {
       program += `  pop rax\n`;
       program += `  mov [rax], rdi\n`;
       program += `  push rdi\n`;
+      return;
+    }
+    case "ND_RETURN": {
+      gen(node.lhs);
+      program += `  pop rax\n`;
+      program += `  ret\n`;
       return;
     }
   }
