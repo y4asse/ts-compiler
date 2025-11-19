@@ -54,6 +54,7 @@ export type { TokenIdent };
 let token: Token | null = null;
 let userInput: string = "";
 let locals: Lvar | null = null;
+let labelSeq = 0;
 
 const newToken = (
   cur: Token,
@@ -151,6 +152,18 @@ const tokenize = (text: string) => {
     if (text.startsWith("return", i) && !isAlnum(text[i + 6])) {
       cur = newToken(cur, newTokenReturn());
       i += 6;
+      continue;
+    }
+
+    if (text.startsWith("if", i) && !isAlnum(text[i + 2])) {
+      cur = newToken(cur, newTokenReserved(text.substring(i, i + 2), 2));
+      i += 2;
+      continue;
+    }
+
+    if (text.startsWith("else", i) && !isAlnum(text[i + 4])) {
+      cur = newToken(cur, newTokenReserved(text.substring(i, i + 4), 4));
+      i += 4;
       continue;
     }
 
@@ -260,6 +273,7 @@ type ND_LT = "ND_LT";
 type ND_ASSIGN = "ND_ASSIGN";
 type ND_LVAR = "ND_LVAR";
 type ND_RETURN = "ND_RETURN";
+type ND_IF = "ND_IF";
 
 type Node = {
   kind:
@@ -283,6 +297,13 @@ type Node = {
 } | {
   kind: ND_RETURN;
   lhs: Node;
+} | NodeIf;
+
+type NodeIf = {
+  kind: ND_IF;
+  condition: Node;
+  then: Node;
+  els: Node | null;
 };
 
 const newNode = (
@@ -327,6 +348,15 @@ const newNodeReturn = (lhs: Node): Node => {
   };
 };
 
+const newNodeIf = (condition: Node, then: Node, els: Node | null): NodeIf => {
+  return {
+    kind: "ND_IF",
+    condition,
+    then,
+    els,
+  };
+};
+
 const code: (Node | null)[] = [];
 const programCode = () => {
   let i = 0;
@@ -336,9 +366,30 @@ const programCode = () => {
   code[i] = null;
 };
 
+// stmt    = expr ";"
+//         | "if" "(" expr ")" stmt ("else" stmt)?
+//         | "return" expr ";"
 const stmt = (): Node => {
-  const node = consume("return") ? newNodeReturn(expr()) : expr();
+  if (consume("if")) {
+    expect("(");
+    const condition = expr();
+    expect(")");
+    const then = stmt();
 
+    const node = newNodeIf(condition, then, null);
+
+    if (consume("else")) {
+      node.els = stmt();
+    }
+    return node;
+  }
+
+  let node: Node;
+  if (consume("return")) {
+    node = newNodeReturn(expr());
+  } else {
+    node = expr();
+  }
   expect(";");
 
   return node;
@@ -496,6 +547,28 @@ const gen = (node: Node) => {
       gen(node.lhs);
       program += `  pop rax\n`;
       program += `  ret\n`;
+      return;
+    }
+    case "ND_IF": {
+      const seq = labelSeq++;
+      if (node.els) {
+        gen(node.condition);
+        program += `  pop rax\n`;
+        program += `  cmp rax, 0\n`;
+        program += `  je .Lelse${seq}\n`;
+        gen(node.then);
+        program += `  jmp .Lend${seq}\n`;
+        program += `.Lelse${seq}:\n`;
+        gen(node.els);
+        program += `.Lend${seq}:\n`;
+        return;
+      }
+      gen(node.condition);
+      program += `  pop rax\n`;
+      program += `  cmp rax, 0\n`;
+      program += `  je .Lend${seq}\n`;
+      gen(node.then);
+      program += `.Lend${seq}:\n`;
       return;
     }
   }
