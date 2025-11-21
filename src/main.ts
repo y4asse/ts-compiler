@@ -88,6 +88,27 @@ const isDigit = (char: string): boolean => {
   return /\d/.test(char);
 };
 
+const isReservedToken = (text: string, pos: number): string | null => {
+  const reservedToken = reservedTokens.find((v) => text.startsWith(v, pos));
+  if (reservedToken && !isAlnum(text[pos + reservedToken.length])) {
+    return reservedToken;
+  }
+
+  const multiLetter = multiLetterPunctuator.find((v) =>
+    text.startsWith(v, pos)
+  );
+  if (multiLetter) {
+    return multiLetter;
+  }
+
+  const char = text[pos];
+  if (singleLetterPunctuator.includes(char)) {
+    return char;
+  }
+
+  return null;
+};
+
 const isAlnum = (char: string): boolean => {
   return ("a".charCodeAt(0) <= char.charCodeAt(0) &&
     char.charCodeAt(0) <= "z".charCodeAt(0)) ||
@@ -116,6 +137,11 @@ const singleLetterPunctuator = [
   "=",
   ";",
 ];
+const reservedTokens = [
+  "return",
+  "if",
+  "else",
+];
 
 const tokenize = (text: string) => {
   const head: Token = {
@@ -132,32 +158,14 @@ const tokenize = (text: string) => {
       continue;
     }
 
-    if (text.startsWith("return", i) && !isAlnum(text[i + 6])) {
-      cur = newToken(cur, newTokenReserved(text.substring(i, i + 6), 6));
-      i += 6;
-      continue;
-    }
-
-    if (text.startsWith("if", i) && !isAlnum(text[i + 2])) {
-      cur = newToken(cur, newTokenReserved(text.substring(i, i + 2), 2));
-      i += 2;
-      continue;
-    }
-
-    if (text.startsWith("else", i) && !isAlnum(text[i + 4])) {
-      cur = newToken(cur, newTokenReserved(text.substring(i, i + 4), 4));
-      i += 4;
-      continue;
-    }
-
-    if (multiLetterPunctuator.find((v) => text.startsWith(v, i))) {
-      cur = newToken(cur, newTokenReserved(text.substring(i, i + 2), 2));
-      i += 2;
-      continue;
-    }
-
-    if (singleLetterPunctuator.includes(text[i])) {
-      cur = newToken(cur, newTokenReserved(text[i++], 1));
+    const reservedToken = isReservedToken(text, i);
+    if (reservedToken) {
+      const len = reservedToken.length;
+      cur = newToken(
+        cur,
+        newTokenReserved(reservedToken, len),
+      );
+      i += len;
       continue;
     }
 
