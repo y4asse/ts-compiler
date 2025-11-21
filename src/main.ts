@@ -3,7 +3,6 @@ import { findLvar, Lvar } from "./lvar.ts";
 type TokenKindReserved = "RESERVED";
 type TokenKindNum = "NUM";
 type TokenKindIdent = "IDENT";
-type TokenKindReturn = "RETURN";
 type TokenKindEOF = "EOF";
 type TokenKindHead = "HEAD";
 
@@ -26,13 +25,6 @@ type TokenIdent = {
   next: Token | null;
   len: number;
 };
-
-type TokenReturn = {
-  kind: TokenKindReturn;
-  str: "return";
-  next: Token | null;
-};
-
 type TokenEOF = {
   kind: TokenKindEOF;
 };
@@ -47,8 +39,7 @@ type Token =
   | TokenNum
   | TokenIdent
   | TokenEOF
-  | TokenHead
-  | TokenReturn;
+  | TokenHead;
 export type { TokenIdent };
 
 let token: Token | null = null;
@@ -90,14 +81,6 @@ const newTokenIdent = (str: string, len: number): Token => {
     str,
     next: null,
     len,
-  };
-};
-
-const newTokenReturn = (): Token => {
-  return {
-    kind: "RETURN",
-    str: "return",
-    next: null,
   };
 };
 
@@ -150,7 +133,7 @@ const tokenize = (text: string) => {
     }
 
     if (text.startsWith("return", i) && !isAlnum(text[i + 6])) {
-      cur = newToken(cur, newTokenReturn());
+      cur = newToken(cur, newTokenReserved(text.substring(i, i + 6), 6));
       i += 6;
       continue;
     }
@@ -224,7 +207,7 @@ const atEOF = () => {
 };
 
 const consume = (op: string) => {
-  if ((token?.kind !== "RESERVED") && (token?.kind !== "RETURN")) {
+  if (token?.kind !== "RESERVED") {
     return false;
   }
 
