@@ -142,6 +142,7 @@ const reservedTokens = [
   "if",
   "else",
   "while",
+  "for",
 ];
 
 const tokenize = (text: string) => {
@@ -267,6 +268,7 @@ type ND_LVAR = "ND_LVAR";
 type ND_RETURN = "ND_RETURN";
 type ND_IF = "ND_IF";
 type ND_WHILE = "ND_WHILE";
+type ND_FOR = "ND_FOR";
 
 type Node =
   | {
@@ -296,7 +298,8 @@ type Node =
     lhs: Node;
   }
   | NodeIf
-  | NodeWhile;
+  | NodeWhile
+  | NodeFor;
 
 type NodeIf = {
   kind: ND_IF;
@@ -308,6 +311,14 @@ type NodeIf = {
 type NodeWhile = {
   kind: ND_WHILE;
   condition: Node;
+  then: Node;
+};
+
+type NodeFor = {
+  kind: ND_FOR;
+  initialization: Node | null;
+  condition: Node | null;
+  afterthought: Node | null;
   then: Node;
 };
 
@@ -370,6 +381,21 @@ const newNodeWhile = (condition: Node, then: Node): NodeWhile => {
   };
 };
 
+const newNodeFor = (
+  initialization: Node | null,
+  condition: Node | null,
+  afterthought: Node | null,
+  then: Node,
+): NodeFor => {
+  return {
+    kind: "ND_FOR",
+    initialization,
+    condition,
+    afterthought,
+    then,
+  };
+};
+
 const code: (Node | null)[] = [];
 const programCode = () => {
   let i = 0;
@@ -382,8 +408,36 @@ const programCode = () => {
 // stmt    = expr ";"
 //         | "if" "(" expr ")" stmt ("else" stmt)?
 //         | "while" "(" expr ")" stmt
+//         | "for" "(" expr? ";" expr? ";" expr? ")" stmt
 //         | "return" expr ";"
 const stmt = (): Node => {
+  if (consume("for")) {
+    expect("(");
+
+    let init: Node | null = null;
+    if (!consume(";")) {
+      init = expr();
+      expect(";");
+    }
+
+    let cond: Node | null = null;
+    if (!consume(";")) {
+      cond = expr();
+      expect(";");
+    }
+
+    let after: Node | null = null;
+    if (!consume(")")) {
+      after = expr();
+      expect(")");
+    }
+
+    const then = stmt();
+
+    const node = newNodeFor(init, cond, after, then);
+    return node;
+  }
+
   if (consume("if")) {
     expect("(");
     const condition = expr();
@@ -602,6 +656,26 @@ const gen = (node: Node) => {
       program += `  cmp rax, 0\n`;
       program += `  je .Lend${seq}\n`;
       gen(node.then);
+      program += `  jmp .Lbegin${seq}\n`;
+      program += `.Lend${seq}:\n`;
+      return;
+    }
+    case "ND_FOR": {
+      const seq = labelSeq++;
+      if (node.initialization) {
+        gen(node.initialization);
+      }
+      program += `.Lbegin${seq}:\n`;
+      if (node.condition) {
+        gen(node.condition);
+        program += `  pop rax\n`;
+        program += `  cmp rax, 0\n`;
+        program += `  je .Lend${seq}\n`;
+      }
+      gen(node.then);
+      if (node.afterthought) {
+        gen(node.afterthought);
+      }
       program += `  jmp .Lbegin${seq}\n`;
       program += `.Lend${seq}:\n`;
       return;
