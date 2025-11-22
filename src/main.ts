@@ -419,13 +419,13 @@ const relational = (): Node => {
 
   while (true) {
     if (consume("<")) {
-      node = newNode("ND_LT", node, relational());
+      node = newNode("ND_LT", node, add());
     } else if (consume(">")) {
-      node = newNode("ND_LT", relational(), node);
+      node = newNode("ND_LT", add(), node);
     } else if (consume("<=")) {
-      node = newNode("ND_LE", node, relational());
+      node = newNode("ND_LE", node, add());
     } else if (consume(">=")) {
-      node = newNode("ND_LE", relational(), node);
+      node = newNode("ND_LE", add(), node);
     } else {
       return node;
     }
