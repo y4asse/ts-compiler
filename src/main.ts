@@ -537,7 +537,7 @@ const gen = (node: Node) => {
     case "ND_RETURN": {
       gen(node.lhs);
       program += `  pop rax\n`;
-      program += `  ret\n`;
+      program += `  je .Lreturn\n`;
       return;
     }
     case "ND_IF": {
@@ -614,6 +614,8 @@ const main = async () => {
   program += ".globl main\n";
   program += "\n";
   program += "main:\n";
+  program += "  push rbp\n";
+  program += "  mov rbp, rsp\n";
 
   userInput = await Deno.readTextFile("program");
 
@@ -623,6 +625,11 @@ const main = async () => {
   // codeにNodeの配列が入る
   programCode();
 
+  // ローカル変数用のスタック領域を確保
+  if (locals) {
+    program += `  sub rsp, ${locals.offset}\n`;
+  }
+
   for (let i = 0; code[i]; i++) {
     const node = code[i];
     if (!node) {
@@ -630,11 +637,11 @@ const main = async () => {
     }
 
     gen(node);
-
-    program += "  pop rax\n";
   }
 
-  // TODOエピローグ
+  program += ".Lreturn:\n";
+  program += "  mov rsp, rbp\n";
+  program += "  pop rbp\n";
   program += "  ret\n";
 
   await Deno.writeTextFile("./dist/out.s", program);
