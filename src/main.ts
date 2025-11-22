@@ -141,6 +141,7 @@ const reservedTokens = [
   "return",
   "if",
   "else",
+  "while",
 ];
 
 const tokenize = (text: string) => {
@@ -240,7 +241,7 @@ const consumeIdent = (): TokenIdent | null => {
 
 const expect = (op: string) => {
   if (token?.kind !== "RESERVED" || token.str !== op) {
-    return false;
+    return error(`${op}ではありません。`);
   }
   token = token.next;
 };
@@ -265,36 +266,49 @@ type ND_ASSIGN = "ND_ASSIGN";
 type ND_LVAR = "ND_LVAR";
 type ND_RETURN = "ND_RETURN";
 type ND_IF = "ND_IF";
+type ND_WHILE = "ND_WHILE";
 
-type Node = {
-  kind:
-    | ND_ADD
-    | ND_SUB
-    | ND_MUL
-    | ND_DIV
-    | ND_EQ
-    | ND_NE
-    | ND_LE
-    | ND_LT
-    | ND_ASSIGN;
-  lhs: Node;
-  rhs: Node;
-} | {
-  kind: ND_NUM;
-  val: number;
-} | {
-  kind: ND_LVAR;
-  offset: number;
-} | {
-  kind: ND_RETURN;
-  lhs: Node;
-} | NodeIf;
+type Node =
+  | {
+    kind:
+      | ND_ADD
+      | ND_SUB
+      | ND_MUL
+      | ND_DIV
+      | ND_EQ
+      | ND_NE
+      | ND_LE
+      | ND_LT
+      | ND_ASSIGN;
+    lhs: Node;
+    rhs: Node;
+  }
+  | {
+    kind: ND_NUM;
+    val: number;
+  }
+  | {
+    kind: ND_LVAR;
+    offset: number;
+  }
+  | {
+    kind: ND_RETURN;
+    lhs: Node;
+  }
+  | NodeIf
+  | NodeWhile;
 
 type NodeIf = {
   kind: ND_IF;
   condition: Node;
   then: Node;
   els: Node | null;
+};
+
+type NodeWhile = {
+  kind: ND_WHILE;
+  condition: Node;
+  then: Node;
 };
 
 const newNode = (
@@ -348,6 +362,14 @@ const newNodeIf = (condition: Node, then: Node, els: Node | null): NodeIf => {
   };
 };
 
+const newNodeWhile = (condition: Node, then: Node): NodeWhile => {
+  return {
+    kind: "ND_WHILE",
+    condition,
+    then,
+  };
+};
+
 const code: (Node | null)[] = [];
 const programCode = () => {
   let i = 0;
@@ -359,6 +381,7 @@ const programCode = () => {
 
 // stmt    = expr ";"
 //         | "if" "(" expr ")" stmt ("else" stmt)?
+//         | "while" "(" expr ")" stmt
 //         | "return" expr ";"
 const stmt = (): Node => {
   if (consume("if")) {
@@ -372,6 +395,15 @@ const stmt = (): Node => {
     if (consume("else")) {
       node.els = stmt();
     }
+    return node;
+  }
+
+  if (consume("while")) {
+    expect("(");
+    const condition = expr();
+    expect(")");
+    const then = stmt();
+    const node = newNodeWhile(condition, then);
     return node;
   }
 
@@ -559,6 +591,18 @@ const gen = (node: Node) => {
       program += `  cmp rax, 0\n`;
       program += `  je .Lend${seq}\n`;
       gen(node.then);
+      program += `.Lend${seq}:\n`;
+      return;
+    }
+    case "ND_WHILE": {
+      const seq = labelSeq++;
+      program += `.Lbegin${seq}:\n`;
+      gen(node.condition);
+      program += `  pop rax\n`;
+      program += `  cmp rax, 0\n`;
+      program += `  je .Lend${seq}\n`;
+      gen(node.then);
+      program += `  jmp .Lbegin${seq}\n`;
       program += `.Lend${seq}:\n`;
       return;
     }
