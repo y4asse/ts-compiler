@@ -656,6 +656,7 @@ const gen = (node: Node) => {
       program += `  cmp rax, 0\n`;
       program += `  je .Lend${seq}\n`;
       gen(node.then);
+      program += `  pop rax\n`;
       program += `  jmp .Lbegin${seq}\n`;
       program += `.Lend${seq}:\n`;
       return;
@@ -664,6 +665,7 @@ const gen = (node: Node) => {
       const seq = labelSeq++;
       if (node.initialization) {
         gen(node.initialization);
+        program += `  pop rax\n`;
       }
       program += `.Lbegin${seq}:\n`;
       if (node.condition) {
@@ -673,8 +675,10 @@ const gen = (node: Node) => {
         program += `  je .Lend${seq}\n`;
       }
       gen(node.then);
+      program += `  pop rax\n`;
       if (node.afterthought) {
         gen(node.afterthought);
+        program += `  pop rax\n`;
       }
       program += `  jmp .Lbegin${seq}\n`;
       program += `.Lend${seq}:\n`;
