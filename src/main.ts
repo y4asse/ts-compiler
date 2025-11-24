@@ -138,6 +138,7 @@ const singleLetterPunctuator = [
   ";",
   "{",
   "}",
+  ",",
 ];
 const reservedTokens = [
   "return",
@@ -145,6 +146,14 @@ const reservedTokens = [
   "else",
   "while",
   "for",
+];
+const argreg = [
+  "rdi",
+  "rsi",
+  "rdx",
+  "rcx",
+  "r8",
+  "r9",
 ];
 
 const tokenize = (text: string) => {
@@ -335,6 +344,7 @@ type NodeBlock = {
 type NodeFuncall = {
   kind: ND_FUNCALL;
   funcName: string;
+  args: Node[];
 };
 
 const newNode = (
@@ -418,10 +428,11 @@ const newNodeFor = (
   };
 };
 
-const newNodeFuncall = (funcName: string): NodeFuncall => {
+const newNodeFuncall = (funcName: string, args: Node[]): NodeFuncall => {
   return {
     kind: "ND_FUNCALL",
     funcName,
+    args,
   };
 };
 
@@ -598,6 +609,23 @@ const unary = (): Node => {
   return primary();
 };
 
+// func-args = "(" (assign ( "," assign )*)? ")"
+const funcArgs = (): Node[] => {
+  if (consume(")")) {
+    return [];
+  }
+
+  const args: Node[] = [];
+  do {
+    const arg = assign();
+    args.push(arg);
+  } while (consume(","));
+
+  expect(")");
+
+  return args;
+};
+
 // primary = num
 //         | ident ("(" ")")?
 //         | "(" expr ")"
@@ -605,8 +633,8 @@ const primary = (): Node => {
   const identToken = consumeIdent();
   if (identToken) {
     if (consume("(")) {
-      const node = newNodeFuncall(identToken.str);
-      expect(")");
+      const args: Node[] = funcArgs();
+      const node = newNodeFuncall(identToken.str, args);
       return node;
     }
 
@@ -739,6 +767,13 @@ const gen = (node: Node) => {
       return;
     }
     case "ND_FUNCALL": {
+      for (const n of node.args) {
+        gen(n);
+      }
+
+      for (let i = node.args.length - 1; i >= 0; i--) {
+        program += `  pop ${argreg[i]}\n`;
+      }
       program += `  call ${node.funcName}\n`;
       program += `  push rax\n`;
       return;

@@ -1,1 +1,1 @@
-foo();
+num = add(2, 3); print(num); return 0;
