@@ -774,7 +774,22 @@ const gen = (node: Node) => {
       for (let i = node.args.length - 1; i >= 0; i--) {
         program += `  pop ${argreg[i]}\n`;
       }
+
+      const seq = labelSeq++;
+      program += `  mov rax, rsp\n`;
+      program += `  and rax, 15\n`;
+      program += `  jnz .Lcall${seq}\n`;
+      program += `  mov rax, 0\n`; // XMMを使う可変長引数の数を入れる。基本0でよい。
       program += `  call ${node.funcName}\n`;
+      program += `  jmp .Lend${seq}\n`;
+
+      program += `.Lcall${seq}:\n`;
+      program += `  sub rsp, 8\n`;
+      program += `  mov rax, 0\n`;
+      program += `  call ${node.funcName}\n`;
+      program += `  add rsp, 8\n`;
+      program += `.Lend${seq}:\n`;
+
       program += `  push rax\n`;
       return;
     }
