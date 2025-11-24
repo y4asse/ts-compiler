@@ -136,6 +136,8 @@ const singleLetterPunctuator = [
   ">",
   "=",
   ";",
+  "{",
+  "}",
 ];
 const reservedTokens = [
   "return",
@@ -269,6 +271,7 @@ type ND_RETURN = "ND_RETURN";
 type ND_IF = "ND_IF";
 type ND_WHILE = "ND_WHILE";
 type ND_FOR = "ND_FOR";
+type ND_BLOCK = "ND_BLOCK";
 
 type Node =
   | {
@@ -299,7 +302,8 @@ type Node =
   }
   | NodeIf
   | NodeWhile
-  | NodeFor;
+  | NodeFor
+  | NodeBlock;
 
 type NodeIf = {
   kind: ND_IF;
@@ -320,6 +324,11 @@ type NodeFor = {
   condition: Node | null;
   afterthought: Node | null;
   then: Node;
+};
+
+type NodeBlock = {
+  kind: ND_BLOCK;
+  body: Node[];
 };
 
 const newNode = (
@@ -381,6 +390,13 @@ const newNodeWhile = (condition: Node, then: Node): NodeWhile => {
   };
 };
 
+const newNodeBlock = (body: Node[]): NodeBlock => {
+  return {
+    kind: "ND_BLOCK",
+    body,
+  };
+};
+
 const newNodeFor = (
   initialization: Node | null,
   condition: Node | null,
@@ -406,11 +422,21 @@ const programCode = () => {
 };
 
 // stmt    = expr ";"
+//         | "{" stmt* "}"
 //         | "if" "(" expr ")" stmt ("else" stmt)?
 //         | "while" "(" expr ")" stmt
 //         | "for" "(" expr? ";" expr? ";" expr? ")" stmt
 //         | "return" expr ";"
 const stmt = (): Node => {
+  if (consume("{")) {
+    const body: Node[] = [];
+    while (!consume("}")) {
+      const node = stmt();
+      body.push(node);
+    }
+    return newNodeBlock(body);
+  }
+
   if (consume("for")) {
     expect("(");
 
@@ -682,6 +708,12 @@ const gen = (node: Node) => {
       }
       program += `  jmp .Lbegin${seq}\n`;
       program += `.Lend${seq}:\n`;
+      return;
+    }
+    case "ND_BLOCK": {
+      for (const n of node.body) {
+        gen(n);
+      }
       return;
     }
   }
