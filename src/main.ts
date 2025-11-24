@@ -272,6 +272,7 @@ type ND_IF = "ND_IF";
 type ND_WHILE = "ND_WHILE";
 type ND_FOR = "ND_FOR";
 type ND_BLOCK = "ND_BLOCK";
+type ND_FUNCALL = "ND_FUNCALL";
 
 type Node =
   | {
@@ -303,7 +304,8 @@ type Node =
   | NodeIf
   | NodeWhile
   | NodeFor
-  | NodeBlock;
+  | NodeBlock
+  | NodeFuncall;
 
 type NodeIf = {
   kind: ND_IF;
@@ -329,6 +331,10 @@ type NodeFor = {
 type NodeBlock = {
   kind: ND_BLOCK;
   body: Node[];
+};
+type NodeFuncall = {
+  kind: ND_FUNCALL;
+  funcName: string;
 };
 
 const newNode = (
@@ -409,6 +415,13 @@ const newNodeFor = (
     condition,
     afterthought,
     then,
+  };
+};
+
+const newNodeFuncall = (funcName: string): NodeFuncall => {
+  return {
+    kind: "ND_FUNCALL",
+    funcName,
   };
 };
 
@@ -585,9 +598,18 @@ const unary = (): Node => {
   return primary();
 };
 
+// primary = num
+//         | ident ("(" ")")?
+//         | "(" expr ")"
 const primary = (): Node => {
   const identToken = consumeIdent();
   if (identToken) {
+    if (consume("(")) {
+      const node = newNodeFuncall(identToken.str);
+      expect(")");
+      return node;
+    }
+
     const lvar = findLvar(locals, identToken);
     if (lvar) {
       return newNodeLvar(lvar.offset);
@@ -714,6 +736,11 @@ const gen = (node: Node) => {
       for (const n of node.body) {
         gen(n);
       }
+      return;
+    }
+    case "ND_FUNCALL": {
+      program += `  call ${node.funcName}\n`;
+      program += `  push rax\n`;
       return;
     }
   }
