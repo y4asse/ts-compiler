@@ -46,6 +46,7 @@ let token: Token | null = null;
 let userInput: string = "";
 let locals: Lvar | null = null;
 let labelSeq = 0;
+let currentFuncName = "";
 
 const newToken = (
   cur: Token,
@@ -146,6 +147,7 @@ const reservedTokens = [
   "else",
   "while",
   "for",
+  "function",
 ];
 const argreg = [
   "rdi",
@@ -223,6 +225,18 @@ const expectNumber = () => {
   return val;
 };
 
+const expectIdent = () => {
+  if (token === null) {
+    return error("トークンがありません");
+  }
+  if (token.kind !== "IDENT") {
+    return error("識別子ではありません");
+  }
+  const ident = token.str;
+  token = token.next;
+  return ident;
+};
+
 const atEOF = () => {
   return token?.kind === "EOF";
 };
@@ -262,6 +276,13 @@ const errorAt = (pos: number, message: string) => {
   console.error(userInput);
   console.error(" ".repeat(pos) + "^ " + message);
   Deno.exit(1);
+};
+
+type Func = {
+  name: string;
+  body: Node[];
+  locals: Lvar[];
+  stackSize: number;
 };
 
 // 抽象構文木を生成する
@@ -436,13 +457,41 @@ const newNodeFuncall = (funcName: string, args: Node[]): NodeFuncall => {
   };
 };
 
-const code: (Node | null)[] = [];
-const programCode = () => {
-  let i = 0;
+// program = function*
+const programCode = (): (Func)[] => {
+  const code: Func[] = [];
   while (!atEOF()) {
-    code[i++] = stmt();
+    const f = func();
+    code.push(f);
   }
-  code[i] = null;
+  return code;
+};
+
+// function = ident "(" ")" "{" stmt* "}"
+const func = (): Func => {
+  expect("function");
+
+  const name = expectIdent();
+
+  const locals: Lvar[] = [];
+
+  expect("(");
+  expect(")");
+  expect("{");
+
+  const body: Node[] = [];
+  while (!consume("}")) {
+    const node = stmt();
+    body.push(node);
+  }
+
+  const func: Func = {
+    name,
+    locals,
+    body,
+    stackSize: 8 * locals.length,
+  };
+  return func;
 };
 
 // stmt    = expr ";"
@@ -699,7 +748,7 @@ const gen = (node: Node) => {
     case "ND_RETURN": {
       gen(node.lhs);
       program += `  pop rax\n`;
-      program += `  je .Lreturn\n`;
+      program += `  jmp .Lreturn${currentFuncName}\n`;
       return;
     }
     case "ND_IF": {
@@ -841,39 +890,33 @@ const gen = (node: Node) => {
 };
 
 const main = async () => {
-  program = ".intel_syntax noprefix\n";
-  program += ".globl main\n";
-  program += "\n";
-  program += "main:\n";
-  program += "  push rbp\n";
-  program += "  mov rbp, rsp\n";
-
   userInput = await Deno.readTextFile("program");
 
   // トークナイズする
   token = tokenize(userInput);
 
-  // codeにNodeの配列が入る
-  programCode();
+  const fns = programCode();
 
-  // ローカル変数用のスタック領域を確保
-  if (locals) {
-    program += `  sub rsp, ${locals.offset}\n`;
-  }
+  // コード生成
+  program = ".intel_syntax noprefix\n";
+  for (const fn of fns) {
+    program += `.globl ${fn.name}\n`;
+    program += `${fn.name}:\n`;
+    currentFuncName = fn.name;
 
-  for (let i = 0; code[i]; i++) {
-    const node = code[i];
-    if (!node) {
-      break;
+    program += "  push rbp\n";
+    program += "  mov rbp, rsp\n";
+    program += `  sub rsp, ${fn.stackSize}\n`;
+
+    for (const n of fn.body) {
+      gen(n);
     }
 
-    gen(node);
+    program += `.Lreturn${fn.name}:\n`;
+    program += "  mov rsp, rbp\n";
+    program += "  pop rbp\n";
+    program += "  ret\n";
   }
-
-  program += ".Lreturn:\n";
-  program += "  mov rsp, rbp\n";
-  program += "  pop rbp\n";
-  program += "  ret\n";
 
   await Deno.writeTextFile("./dist/out.s", program);
 };
