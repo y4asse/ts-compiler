@@ -1,4 +1,4 @@
-import { findLvar, Lvar } from "./lvar.ts";
+import { Lvar } from "./lvar.ts";
 
 type TokenKindReserved = "RESERVED";
 type TokenKindNum = "NUM";
@@ -44,7 +44,7 @@ export type { TokenIdent };
 
 let token: Token | null = null;
 let userInput: string = "";
-let locals: Lvar | null = null;
+const locals: Lvar[] = [];
 let labelSeq = 0;
 let currentFuncName = "";
 
@@ -687,17 +687,16 @@ const primary = (): Node => {
       return node;
     }
 
-    const lvar = findLvar(locals, identToken);
+    const lvar = locals.find((v) => v.name === identToken.str);
     if (lvar) {
       return newNodeLvar(lvar.offset);
     } else {
       const newLvar: Lvar = {
-        next: locals,
         name: identToken.str,
         len: identToken.len,
-        offset: locals ? locals.offset + 8 : 8,
+        offset: (locals.length + 1) * 8,
       };
-      locals = newLvar;
+      locals.push(newLvar);
       return newNodeLvar(newLvar.offset);
     }
   }
