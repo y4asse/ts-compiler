@@ -44,7 +44,7 @@ export type { TokenIdent };
 
 let token: Token | null = null;
 let userInput: string = "";
-const locals: Lvar[] = [];
+let locals: Lvar[] = [];
 let labelSeq = 0;
 let currentFuncName = "";
 
@@ -281,6 +281,7 @@ const errorAt = (pos: number, message: string) => {
 type Func = {
   name: string;
   body: Node[];
+  params: Lvar[];
   locals: Lvar[];
   stackSize: number;
 };
@@ -467,16 +468,45 @@ const programCode = (): (Func)[] => {
   return code;
 };
 
-// function = ident "(" ")" "{" stmt* "}"
+const readFuncParams = (): Lvar[] => {
+  const params: Lvar[] = [];
+  if (consume(")")) {
+    return params;
+  }
+
+  const ident = expectIdent();
+  params.push({
+    name: ident,
+    len: ident.length,
+    offset: (params.length + 1) * 8,
+  });
+
+  while (!consume(")")) {
+    expect(",");
+    const ident = expectIdent();
+    params.push({
+      name: ident,
+      len: ident.length,
+      offset: (params.length + 1) * 8,
+    });
+  }
+
+  locals.push(...params);
+
+  return params;
+};
+
+// function = ident "(" params? ")" "{" stmt* "}"
+// params = ident ("," ident)*
 const func = (): Func => {
   expect("function");
 
   const name = expectIdent();
 
-  const locals: Lvar[] = [];
+  locals = [];
 
   expect("(");
-  expect(")");
+  const params: Lvar[] = readFuncParams();
   expect("{");
 
   const body: Node[] = [];
@@ -488,6 +518,7 @@ const func = (): Func => {
   const func: Func = {
     name,
     locals,
+    params,
     body,
     stackSize: 8 * locals.length,
   };
@@ -906,6 +937,10 @@ const main = async () => {
     program += "  push rbp\n";
     program += "  mov rbp, rsp\n";
     program += `  sub rsp, ${fn.stackSize}\n`;
+
+    fn.params.forEach((p, i) => {
+      program += `  mov [rbp-${p.offset}], ${argreg[i]}\n`;
+    });
 
     for (const n of fn.body) {
       gen(n);

@@ -1,1 +1,1 @@
-function main(){ a = ret32(); b = ret3(); return a + b;} function ret32() { return 32; } function ret3() { return 3; }
+function main(){ return fib(10);} function fib(n) { if (n == 1) return 1; if (n == 2) return 1; return fib(n-1) + fib(n-2); }
